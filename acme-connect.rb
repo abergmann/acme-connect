@@ -48,10 +48,19 @@ class ACME_Connect
   end
 
   # Create Certificate Signing Request from private key and domain name
-  def create_csr(key, domain)
+  def create_csr(key, dom)
+    domains = dom.split(",");
+    main_domain = domains[0]
+
     request = OpenSSL::X509::Request.new
     request.version = 0
-    request.subject = OpenSSL::X509::Name.new [['CN', domain]]
+    request.subject = OpenSSL::X509::Name.new [['CN', main_domain]]
+    if domains.length > 1
+      dns_names = domains.map {|name| "DNS:#{name}" }.join(", ")
+      attrval = create_ext_req([["subjectAltName", dns_names, false]])
+      extreq = OpenSSL::X509::Attribute.new("Extension Request", attrval)
+      request.add_attribute(extreq)
+    end
     request.public_key = key.public_key
     request.sign(key, OpenSSL::Digest::SHA1.new)
 
@@ -72,6 +81,13 @@ class ACME_Connect
   def sign_data(key, data)
     digest = OpenSSL::Digest::SHA256.new
     @signature = b64url(key.sign digest, data)
+  end
+
+  # Create Certificate Request Extension
+  def create_ext_req(exts)
+    ef = OpenSSL::X509::ExtensionFactory.new
+    exts = exts.collect{|e| ef.create_extension(*e) }
+    return OpenSSL::ASN1::Set([OpenSSL::ASN1::Sequence(exts)])
   end
 
   # Initialize ACME directory entries
